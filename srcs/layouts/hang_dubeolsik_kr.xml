@@ -1,15 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <keyboard name="두벌식 (Korean)" script="hangul">
   <row>
-    <key key0="ㅂ" key2="1" key3="ㅄ" key4="ㅃ"/>
-    <key key0="ㅈ" key1="~" key2="2" key3="ㄵ" key4="ㅉ"/>
-    <key key0="ㄷ" key1="!" key2="3" key4="ㄸ"/>
-    <key key0="ㄱ" key1="\@" key2="4" key3="ㄺ" key4="ㄲ"/>
-    <key key0="ㅅ" key1="\#" key2="5" key3="ㄳ" key4="ㅆ"/>
+    <key key0="ㅂ" key2="1" key3="ㅄ"/>
+    <key key0="ㅈ" key1="~" key2="2" key3="ㄵ"/>
+    <key key0="ㄷ" key1="!" key2="3"/>
+    <key key0="ㄱ" key1="\@" key2="4" key3="ㄺ"/>
+    <key key0="ㅅ" key1="\#" key2="5" key3="ㄳ"/>
     <key key0="ㅛ" key1="$" key2="6"/>
-    <key key0="ㅕ" key1="%" key2="7" key3="ㅖ"/>
+    <key key0="ㅕ" key1="%" key2="7"/>
     <key key0="ㅑ" key1="^" key2="8"/>
-    <key key0="ㅐ" key1="&amp;" key2="9" key3="ㅒ"/>
+    <key key0="ㅐ" key1="&amp;" key2="9"/>
     <key key0="ㅔ" key1="*" key2="0" key3="ㅙ"/>
   </row>
   <row>

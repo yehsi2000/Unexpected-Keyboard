@@ -17,4 +17,12 @@ public class KeyModifierTest
     assertEquals(eval("compose", "-", "space"), str("~"));
     assertEquals(eval("compose", "space", "-"), str("~"));
   }
+
+  @Test
+  public void hangul_shift() throws Exception
+  {
+    assertEquals(KeyModifier.modify(key("ㄱ"), KeyValue.Modifier.SHIFT), key("ㄲ"));
+    assertEquals(KeyModifier.modify(key("ㅂ"), KeyValue.Modifier.SHIFT), key("ㅃ"));
+    assertEquals(KeyModifier.modify(key("ㅐ"), KeyValue.Modifier.SHIFT), key("ㅒ"));
+  }
 }

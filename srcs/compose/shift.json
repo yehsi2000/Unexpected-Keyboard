@@ -127,6 +127,15 @@
   "ॅ": "ॲ",
   "ॉ": "ऑ",
 
+  // Korean Hangul tense consonants and iotized vowels (두벌식)
+  "ㄱ": "ㄲ",
+  "ㄷ": "ㄸ",
+  "ㅂ": "ㅃ",
+  "ㅅ": "ㅆ",
+  "ㅈ": "ㅉ",
+  "ㅐ": "ㅒ",
+  "ㅔ": "ㅖ",
+
   // Mathematical symbols
   "\uD835": {
     "\uDD68": "𝕎", // 𝕨 → 𝕎

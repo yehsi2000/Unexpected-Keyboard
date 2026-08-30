@@ -35,6 +35,10 @@ public final class KeyEventHandler
   /** Remember the action that was handled. This is used by autocorrect. */
   LastAction _last_action = null;
   LastAction _next_last_action = null;
+  /** The Hangul composition automaton. Only used while a layout with
+      [script == "hangul"] is active, see [set_hangul_enabled]. */
+  HangulComposer _hangul = new HangulComposer();
+  boolean _hangul_enabled = false;
 
   public KeyEventHandler(IReceiver recv, Suggestions sg)
   {
@@ -58,13 +62,18 @@ public final class KeyEventHandler
       conf.editor_config.should_move_cursor_force_fallback;
     _space_bar_auto_complete = conf.space_bar_auto_complete;
     _last_action = null;
+    _hangul.clear();
   }
 
-  /** Selection has been updated. */
-  public void selection_updated(int oldSelStart, int newSelStart, int newSelEnd)
+  /** Selection has been updated. [candidatesStart] is the start of the
+      composing region, or [-1] if there is none. */
+  public void selection_updated(int oldSelStart, int newSelStart, int newSelEnd,
+      int candidatesStart)
   {
     _autocap.selection_updated(oldSelStart, newSelStart);
     _typedword.selection_updated(oldSelStart, newSelStart, newSelEnd);
+    if (candidatesStart < 0 && _hangul.is_composing())
+      _hangul.clear();
   }
 
   /** A key is being pressed. There will not necessarily be a corresponding
@@ -108,6 +117,12 @@ public final class KeyEventHandler
     _next_last_action = LastAction.OTHER;
     Pointers.Modifiers old_mods = _mods;
     update_meta_state(mods);
+    if (_hangul_enabled && handle_hangul_key(key))
+    {
+      update_meta_state(old_mods);
+      _last_action = _next_last_action;
+      return;
+    }
     switch (key.getKind())
     {
       case Char: send_text(String.valueOf(key.getChar())); break;
@@ -123,6 +138,83 @@ public final class KeyEventHandler
     }
     update_meta_state(old_mods);
     _last_action = _next_last_action;
+  }
+
+  /** Enable or disable Hangul composition. Called whenever the active layout
+      changes. Finishes any pending composition when disabling. */
+  public void set_hangul_enabled(boolean enabled)
+  {
+    if (_hangul_enabled && !enabled)
+      finish_hangul();
+    _hangul_enabled = enabled;
+  }
+
+  /** Commit whatever is being composed, without clearing the composing
+      region's content. Used when Hangul composition is interrupted by
+      something else than typing another jamo. */
+  void finish_hangul()
+  {
+    if (!_hangul.is_composing())
+      return;
+    InputConnection conn = _recv.getCurrentInputConnection();
+    _hangul.clear();
+    if (conn != null)
+      conn.finishComposingText();
+  }
+
+  /** Feed [key] to the Hangul automaton if it is a jamo or a backspace while
+      composing. Returns whether the key was consumed. Any other key finishes
+      the current composition and is handled normally by the caller. */
+  boolean handle_hangul_key(KeyValue key)
+  {
+    switch (key.getKind())
+    {
+      case Char:
+        char c = key.getChar();
+        if (!HangulComposer.is_jamo(c))
+          break;
+        apply_hangul(_hangul.input(c));
+        return true;
+      case Editing:
+        if (key.getEditing() == KeyValue.Editing.BACKSPACE && _hangul.is_composing())
+        {
+          HangulComposer.Result r = _hangul.backspace();
+          if (r != null)
+          {
+            apply_hangul(r);
+            return true;
+          }
+        }
+        break;
+      case Modifier:
+        // Modifiers (shift, ...) do not interrupt an ongoing composition,
+        // the jamo they apply to has already been resolved by [modifyKey].
+        return false;
+      default: break;
+    }
+    finish_hangul();
+    return false;
+  }
+
+  /** Apply the result of feeding the Hangul automaton: commit the text that
+      is now final and update the composing region. */
+  void apply_hangul(HangulComposer.Result r)
+  {
+    InputConnection conn = _recv.getCurrentInputConnection();
+    if (conn == null)
+      return;
+    conn.beginBatchEdit();
+    if (r.commit.length() > 0)
+    {
+      _autocap.typed(r.commit);
+      _typedword.typed(r.commit);
+      conn.commitText(r.commit, 1);
+    }
+    if (r.composing.length() == 0)
+      conn.finishComposingText();
+    else
+      conn.setComposingText(r.composing, 1);
+    conn.endBatchEdit();
   }
 
   @Override

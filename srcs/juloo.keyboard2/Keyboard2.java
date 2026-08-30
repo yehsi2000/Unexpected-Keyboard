@@ -80,6 +80,14 @@ public class Keyboard2 extends InputMethodService
     return LayoutModifier.modify_layout(current_layout_unmodified());
   }
 
+  /** Set the layout shown by [_keyboard_layout_view] and enable Hangul
+      composition in [_keyeventhandler] when its script is "hangul". */
+  void set_layout_view(KeyboardData l)
+  {
+    _keyboard_layout_view.setKeyboard(l);
+    _keyeventhandler.set_hangul_enabled("hangul".equals(l.script));
+  }
+
   void setTextLayout(int l)
   {
     _config.set_current_layout(l);
@@ -87,7 +95,7 @@ public class Keyboard2 extends InputMethodService
     // The active dictionary depends on the current layout.
     refresh_current_dictionary();
     refresh_candidates_view();
-    _keyboard_layout_view.setKeyboard(current_layout());
+    set_layout_view(current_layout());
   }
 
   void incrTextLayout(int delta)
@@ -99,7 +107,7 @@ public class Keyboard2 extends InputMethodService
   void setSpecialLayout(KeyboardData l)
   {
     _currentSpecialLayout = l;
-    _keyboard_layout_view.setKeyboard(l);
+    set_layout_view(l);
   }
 
   KeyboardData loadLayout(int layout_id)
@@ -265,7 +273,7 @@ public class Keyboard2 extends InputMethodService
     _config.editor_config.refresh(info, getResources());
     refresh_config();
     _currentSpecialLayout = refresh_special_layout();
-    _keyboard_layout_view.setKeyboard(current_layout());
+    set_layout_view(current_layout());
     _keyeventhandler.started(_config);
     setInputView(_keyboard_container_view);
     Logs.debug_startup_input_view(info, _config);
@@ -357,14 +365,14 @@ public class Keyboard2 extends InputMethodService
     refreshSubtypeImm();
     refresh_current_dictionary();
     refresh_candidates_view();
-    _keyboard_layout_view.setKeyboard(current_layout());
+    set_layout_view(current_layout());
   }
 
   @Override
   public void onUpdateSelection(int oldSelStart, int oldSelEnd, int newSelStart, int newSelEnd, int candidatesStart, int candidatesEnd)
   {
     super.onUpdateSelection(oldSelStart, oldSelEnd, newSelStart, newSelEnd, candidatesStart, candidatesEnd);
-    _keyeventhandler.selection_updated(oldSelStart, newSelStart, newSelEnd);
+    _keyeventhandler.selection_updated(oldSelStart, newSelStart, newSelEnd, candidatesStart);
     if ((oldSelStart == oldSelEnd) != (newSelStart == newSelEnd))
       _keyboard_layout_view.set_selection_state(newSelStart != newSelEnd);
   }
@@ -373,6 +381,7 @@ public class Keyboard2 extends InputMethodService
   public void onFinishInputView(boolean finishingInput)
   {
     super.onFinishInputView(finishingInput);
+    _keyeventhandler.finish_hangul();
     _keyboard_layout_view.reset();
   }
 
@@ -380,7 +389,7 @@ public class Keyboard2 extends InputMethodService
   public void onSharedPreferenceChanged(SharedPreferences _prefs, String _key)
   {
     refresh_config();
-    _keyboard_layout_view.setKeyboard(current_layout());
+    set_layout_view(current_layout());
   }
 
   @Override
@@ -405,6 +414,164 @@ public class Keyboard2 extends InputMethodService
     }
     return true;
   }
+
+  // K380: right Alt (한영 자리) -> 레이아웃 전환. Left Alt는 조합키 유지.
+  @Override
+  public boolean onKeyDown(int keyCode, KeyEvent event)
+  {
+    if (keyCode == KeyEvent.KEYCODE_ALT_RIGHT)
+    {
+      if (event.getRepeatCount() == 0) incrTextLayout(1);
+      return true;
+    }
+    // 물리 키보드 한글 입력: 현재 레이아웃이 hangul이면 QWERTY 위치를 현재 레이아웃의 같은 row/col로 매핑
+    if ("hangul".equals(current_layout().script))
+    {
+      if (keyCode == KeyEvent.KEYCODE_DEL)
+      {
+        _config.handler.key_down(KeyValue.getKeyByName("backspace"), false);
+        _config.handler.key_up(KeyValue.getKeyByName("backspace"), Pointers.Modifiers.EMPTY);
+        return true;
+      }
+      if (keyCode == KeyEvent.KEYCODE_SPACE)
+      {
+        KeyValue kv = KeyValue.makeCharKey(' ');
+        _config.handler.key_down(kv, false);
+        _config.handler.key_up(kv, Pointers.Modifiers.EMPTY);
+        return true;
+      }
+      if (keyCode == KeyEvent.KEYCODE_ENTER)
+      {
+        _config.handler.key_down(KeyValue.ENTER, false);
+        _config.handler.key_up(KeyValue.ENTER, Pointers.Modifiers.EMPTY);
+        return true;
+      }
+      char mapped = mapPhysicalKeyToHangul(keyCode, event);
+      if (mapped != 0)
+      {
+        KeyValue kv = KeyValue.makeCharKey(mapped);
+        _config.handler.key_down(kv, false);
+        _config.handler.key_up(kv, Pointers.Modifiers.EMPTY);
+        return true;
+      }
+    }
+    return super.onKeyDown(keyCode, event);
+  }
+
+  @Override
+  public boolean onKeyUp(int keyCode, KeyEvent event)
+  {
+    if (keyCode == KeyEvent.KEYCODE_ALT_RIGHT) return true;
+    if ("hangul".equals(current_layout().script))
+    {
+      if (keyCode == KeyEvent.KEYCODE_DEL || keyCode == KeyEvent.KEYCODE_SPACE || keyCode == KeyEvent.KEYCODE_ENTER)
+        return true;
+      if (mapPhysicalKeyToHangul(keyCode, event) != 0) return true;
+    }
+    return super.onKeyUp(keyCode, event);
+  }
+
+  private char mapPhysicalKeyToHangul(int keyCode, KeyEvent event)
+  {
+    boolean shift = (event.getMetaState() & KeyEvent.META_SHIFT_ON) != 0 || event.isShiftPressed();
+    int row = -1, col = -1;
+    switch (keyCode)
+    {
+      case KeyEvent.KEYCODE_Q: row=0; col=0; break;
+      case KeyEvent.KEYCODE_W: row=0; col=1; break;
+      case KeyEvent.KEYCODE_E: row=0; col=2; break;
+      case KeyEvent.KEYCODE_R: row=0; col=3; break;
+      case KeyEvent.KEYCODE_T: row=0; col=4; break;
+      case KeyEvent.KEYCODE_Y: row=0; col=5; break;
+      case KeyEvent.KEYCODE_U: row=0; col=6; break;
+      case KeyEvent.KEYCODE_I: row=0; col=7; break;
+      case KeyEvent.KEYCODE_O: row=0; col=8; break;
+      case KeyEvent.KEYCODE_P: row=0; col=9; break;
+      case KeyEvent.KEYCODE_A: row=1; col=0; break;
+      case KeyEvent.KEYCODE_S: row=1; col=1; break;
+      case KeyEvent.KEYCODE_D: row=1; col=2; break;
+      case KeyEvent.KEYCODE_F: row=1; col=3; break;
+      case KeyEvent.KEYCODE_G: row=1; col=4; break;
+      case KeyEvent.KEYCODE_H: row=1; col=5; break;
+      case KeyEvent.KEYCODE_J: row=1; col=6; break;
+      case KeyEvent.KEYCODE_K: row=1; col=7; break;
+      case KeyEvent.KEYCODE_L: row=1; col=8; break;
+      case KeyEvent.KEYCODE_Z: row=2; col=1; break;
+      case KeyEvent.KEYCODE_X: row=2; col=2; break;
+      case KeyEvent.KEYCODE_C: row=2; col=3; break;
+      case KeyEvent.KEYCODE_V: row=2; col=4; break;
+      case KeyEvent.KEYCODE_B: row=2; col=5; break;
+      case KeyEvent.KEYCODE_N: row=2; col=6; break;
+      case KeyEvent.KEYCODE_M: row=2; col=7; break;
+      default: return 0;
+    }
+    // number row / bottom row가 추가된 modified 레이아웃은 row가 1씩 밀리므로 unmodified 기준로 매핑
+    KeyboardData kd = current_layout_unmodified();
+    if (row >= kd.rows.size()) return fallbackDubeolsik(keyCode, shift);
+    KeyboardData.Row r = kd.rows.get(row);
+    if (col >= r.keys.size()) return fallbackDubeolsik(keyCode, shift);
+    KeyboardData.Key k = r.keys.get(col);
+    KeyValue kv = k.keys[0];
+    if (kv == null || kv.getKind() != KeyValue.Kind.Char) return fallbackDubeolsik(keyCode, shift);
+    char c = kv.getChar();
+    if (!HangulComposer.is_jamo(c)) return fallbackDubeolsik(keyCode, shift);
+    if (shift) c = shiftToDouble(c);
+    return c;
+  }
+
+  private char fallbackDubeolsik(int keyCode, boolean shift)
+  {
+    char c = 0;
+    switch (keyCode)
+    {
+      case KeyEvent.KEYCODE_Q: c='ㅂ'; break;
+      case KeyEvent.KEYCODE_W: c='ㅈ'; break;
+      case KeyEvent.KEYCODE_E: c='ㄷ'; break;
+      case KeyEvent.KEYCODE_R: c='ㄱ'; break;
+      case KeyEvent.KEYCODE_T: c='ㅅ'; break;
+      case KeyEvent.KEYCODE_Y: c='ㅛ'; break;
+      case KeyEvent.KEYCODE_U: c='ㅕ'; break;
+      case KeyEvent.KEYCODE_I: c='ㅑ'; break;
+      case KeyEvent.KEYCODE_O: c='ㅐ'; break;
+      case KeyEvent.KEYCODE_P: c='ㅔ'; break;
+      case KeyEvent.KEYCODE_A: c='ㅁ'; break;
+      case KeyEvent.KEYCODE_S: c='ㄴ'; break;
+      case KeyEvent.KEYCODE_D: c='ㅇ'; break;
+      case KeyEvent.KEYCODE_F: c='ㄹ'; break;
+      case KeyEvent.KEYCODE_G: c='ㅎ'; break;
+      case KeyEvent.KEYCODE_H: c='ㅗ'; break;
+      case KeyEvent.KEYCODE_J: c='ㅓ'; break;
+      case KeyEvent.KEYCODE_K: c='ㅏ'; break;
+      case KeyEvent.KEYCODE_L: c='ㅣ'; break;
+      case KeyEvent.KEYCODE_Z: c='ㅋ'; break;
+      case KeyEvent.KEYCODE_X: c='ㅌ'; break;
+      case KeyEvent.KEYCODE_C: c='ㅊ'; break;
+      case KeyEvent.KEYCODE_V: c='ㅍ'; break;
+      case KeyEvent.KEYCODE_B: c='ㅠ'; break;
+      case KeyEvent.KEYCODE_N: c='ㅜ'; break;
+      case KeyEvent.KEYCODE_M: c='ㅡ'; break;
+      default: return 0;
+    }
+    if (shift) c = shiftToDouble(c);
+    return c;
+  }
+
+  private char shiftToDouble(char c)
+  {
+    switch (c)
+    {
+      case 'ㅂ': return 'ㅃ';
+      case 'ㅈ': return 'ㅉ';
+      case 'ㄷ': return 'ㄸ';
+      case 'ㄱ': return 'ㄲ';
+      case 'ㅅ': return 'ㅆ';
+      case 'ㅐ': return 'ㅒ';
+      case 'ㅔ': return 'ㅖ';
+      default: return c;
+    }
+  }
+
+
 
   public void launch_dictionaries_activity()
   {
@@ -438,7 +605,7 @@ public class Keyboard2 extends InputMethodService
 
         case SWITCH_TEXT:
           _currentSpecialLayout = null;
-          _keyboard_layout_view.setKeyboard(current_layout());
+          set_layout_view(current_layout());
           break;
 
         case SWITCH_NUMERIC:
