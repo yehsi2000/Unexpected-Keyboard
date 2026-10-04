@@ -210,10 +210,14 @@ public final class KeyEventHandler
       _typedword.typed(r.commit);
       conn.commitText(r.commit, 1);
     }
-    if (r.composing.length() == 0)
-      conn.finishComposingText();
-    else
+    if (r.composing.length() > 0)
       conn.setComposingText(r.composing, 1);
+    else if (r.commit.length() == 0)
+      // Backspace removed the last jamo: the composing region must be
+      // deleted, not committed.
+      conn.commitText("", 1);
+    else
+      conn.finishComposingText();
     conn.endBatchEdit();
   }
 
